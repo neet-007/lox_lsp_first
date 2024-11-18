@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/neet-007/lox_lsp_first/internal/lsp"
+	"github.com/neet-007/lox_lsp_first/pkg/analysis"
 	"github.com/neet-007/lox_lsp_first/pkg/rpc"
 )
 
@@ -52,7 +53,51 @@ func handleMessage(logger *log.Logger, writer io.Writer, state string, method st
 
 			logger.Println("reply sent")
 		}
+	case "textDocument/didOpen":
+		{
+			var didOpenTextDocumentNotification lsp.DidOpenTextDocumentNotification
+			if err := json.Unmarshal(content, &didOpenTextDocumentNotification); err != nil {
+				logger.Printf("Error did open:%s\n", err)
+				return
+			}
+			logger.Printf("text document with uri:%s\n", didOpenTextDocumentNotification.Params.TextDocument.URI)
+			_, diagnostics := analysis.Analyse([]byte(didOpenTextDocumentNotification.Params.TextDocument.Text))
+			writeResponse(writer, lsp.PublishDiagnosticsNotification{
+				Notification: lsp.Notification{
+					RPC:    "2.0",
+					Method: "textDocument/publishDiagnostics",
+				},
+				Params: lsp.PublishDiagnosticsParams{
+					URI:         didOpenTextDocumentNotification.Params.TextDocument.URI,
+					Diagnostics: diagnostics,
+				},
+			})
+		}
+	case "textDocument/didChange":
+		{
+			var didChangeTextDocumentNotification lsp.TextDocumentDidChangeNotification
+			if err := json.Unmarshal(content, &didChangeTextDocumentNotification); err != nil {
+				logger.Printf("textDocument/didChange: %s", err)
+				return
+			}
+
+			logger.Printf("Changed: %s", didChangeTextDocumentNotification.Params.TextDocument.URI)
+			for _, change := range didChangeTextDocumentNotification.Params.ContentChanges {
+				_, diagnostics := analysis.Analyse([]byte(change.Text))
+				writeResponse(writer, lsp.PublishDiagnosticsNotification{
+					Notification: lsp.Notification{
+						RPC:    "2.0",
+						Method: "textDocument/publishDiagnostics",
+					},
+					Params: lsp.PublishDiagnosticsParams{
+						URI:         didChangeTextDocumentNotification.Params.TextDocument.URI,
+						Diagnostics: diagnostics,
+					},
+				})
+			}
+		}
 	}
+
 }
 
 func writeResponse(writer io.Writer, msg any) error {

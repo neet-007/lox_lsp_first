@@ -44,7 +44,13 @@ func NewInitializeResponse(id int) InitializeResponse {
 			Id:  &id,
 		},
 		Result: InitializeResult{
-			ServerCapabilities: ServerCapabilities{},
+			ServerCapabilities: ServerCapabilities{
+				TextDocumentSync:   1,
+				HoverProvider:      true,
+				DefinitionProvider: true,
+				CodeActionProvider: true,
+				CompletionProvider: map[string]any{},
+			},
 			ServerInfo: ServerInfo{
 				Name:    "lox_lsp",
 				Version: "0.0.0",

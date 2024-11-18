@@ -3,24 +3,40 @@ package analysis
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/neet-007/lox_lsp_first/internal/lsp"
 )
 
 type Scanner struct {
 	Tokens   []Token
+	Erros    []lsp.Diagnostic
 	Source   []byte
 	Start    int
 	Current  int
 	Line     int
 	Length   int
+	Char     int
 	keyWords map[string]TokenType
+}
+
+func newDiagnostic(range_ lsp.Range, severity int, source string, message string) lsp.Diagnostic {
+	return lsp.Diagnostic{
+		Range:    range_,
+		Severity: severity,
+		Source:   source,
+		Message:  message,
+	}
 }
 
 func NewScanner(source []byte) Scanner {
 	return Scanner{
 		Source:  source,
+		Erros:   []lsp.Diagnostic{},
 		Tokens:  []Token{},
 		Start:   0,
 		Current: 0,
+		Line:    1,
+		Char:    0,
 		Length:  len(source),
 		keyWords: map[string]TokenType{
 			"and":    AND,
@@ -43,15 +59,49 @@ func NewScanner(source []byte) Scanner {
 	}
 }
 
-func (scanner *Scanner) Scan() []Token {
+func (scanner *Scanner) Scan() {
 	for !scanner.isAtEnd() {
 		scanner.Start = scanner.Current
-		scanner.scanToken()
+		if err := scanner.scanToken(); err != nil {
+			if len(scanner.Tokens) > 0 {
+				diagnostic := newDiagnostic(
+					lsp.Range{
+						Start: lsp.Position{
+							Line:      scanner.Line,
+							Character: scanner.Char,
+						},
+						End: lsp.Position{
+							Line:      scanner.Line,
+							Character: scanner.Char,
+						},
+					},
+					1,
+					scanner.Tokens[0].Lexeme,
+					err.Error(),
+				)
+				scanner.Erros = append(scanner.Erros, diagnostic)
+			} else {
+				diagnostic := newDiagnostic(
+					lsp.Range{
+						Start: lsp.Position{
+							Line:      scanner.Line,
+							Character: scanner.Char,
+						},
+						End: lsp.Position{
+							Line:      scanner.Line,
+							Character: scanner.Char,
+						},
+					},
+					1,
+					"",
+					err.Error(),
+				)
+				scanner.Erros = append(scanner.Erros, diagnostic)
+			}
+		}
 	}
 
 	scanner.addToken(EOF, nil)
-
-	return scanner.Tokens
 }
 
 func (scanner *Scanner) scanToken() error {
@@ -128,6 +178,7 @@ func (scanner *Scanner) scanToken() error {
 	case '\n':
 		{
 			scanner.Line++
+			scanner.Char = 0
 			break
 		}
 
@@ -170,18 +221,17 @@ func (scanner *Scanner) scanToken() error {
 
 	case '"':
 		{
-			err := scanner.string()
-			return err
+			return scanner.string()
 		}
 
 	default:
 		{
 			if scanner.isDigit(c) {
-				scanner.number()
-				break
+				return scanner.number()
 			}
 			if scanner.isAlpha(c) {
 				scanner.identifier()
+				break
 			}
 
 			return fmt.Errorf("Unexpected token %s", c)
@@ -194,6 +244,7 @@ func (scanner *Scanner) scanToken() error {
 func (scanner *Scanner) advance() byte {
 	ret := scanner.Source[scanner.Current]
 	scanner.Current++
+	scanner.Char++
 
 	return ret
 }
@@ -220,6 +271,7 @@ func (scanner *Scanner) match(c byte) bool {
 	}
 
 	scanner.Current++
+	scanner.Char++
 	return true
 }
 
@@ -241,6 +293,7 @@ func (scanner *Scanner) string() error {
 	for !scanner.isAtEnd() && scanner.peek() != '"' {
 		if scanner.peek() == '\n' {
 			scanner.Line++
+			scanner.Char = 0
 		}
 		scanner.advance()
 	}
@@ -257,7 +310,7 @@ func (scanner *Scanner) string() error {
 	return nil
 }
 
-func (scanner *Scanner) number() {
+func (scanner *Scanner) number() error {
 	for scanner.isDigit(scanner.peek()) {
 		scanner.advance()
 	}
@@ -272,11 +325,11 @@ func (scanner *Scanner) number() {
 
 	number, err := strconv.ParseFloat(string(scanner.Source[scanner.Start:scanner.Current]), 64)
 	if err != nil {
-		// Handle error
-		return
+		return err
 	}
 
 	scanner.addToken(NUMBER, number)
+	return nil
 }
 
 func (scanner *Scanner) isDigit(c byte) bool {
