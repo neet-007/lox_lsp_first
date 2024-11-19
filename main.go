@@ -61,7 +61,7 @@ func handleMessage(logger *log.Logger, writer io.Writer, state string, method st
 				return
 			}
 			logger.Printf("text document with uri:%s\n", didOpenTextDocumentNotification.Params.TextDocument.URI)
-			_, diagnostics := analysis.Analyse([]byte(didOpenTextDocumentNotification.Params.TextDocument.Text))
+			_, diagnostics := analysis.Analyse([]byte(didOpenTextDocumentNotification.Params.TextDocument.Text), logger)
 			writeResponse(writer, lsp.PublishDiagnosticsNotification{
 				Notification: lsp.Notification{
 					RPC:    "2.0",
@@ -83,7 +83,7 @@ func handleMessage(logger *log.Logger, writer io.Writer, state string, method st
 
 			logger.Printf("Changed: %s", didChangeTextDocumentNotification.Params.TextDocument.URI)
 			for _, change := range didChangeTextDocumentNotification.Params.ContentChanges {
-				_, diagnostics := analysis.Analyse([]byte(change.Text))
+				_, diagnostics := analysis.Analyse([]byte(change.Text), logger)
 				writeResponse(writer, lsp.PublishDiagnosticsNotification{
 					Notification: lsp.Notification{
 						RPC:    "2.0",

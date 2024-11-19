@@ -85,3 +85,12 @@ type Diagnostic struct {
 	Source   string `json:"source"`
 	Message  string `json:"message"`
 }
+
+func NewDiagnostic(range_ Range, severity int, source string, message string) Diagnostic {
+	return Diagnostic{
+		Range:    range_,
+		Severity: severity,
+		Source:   source,
+		Message:  message,
+	}
+}

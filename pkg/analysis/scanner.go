@@ -2,42 +2,36 @@ package analysis
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 
 	"github.com/neet-007/lox_lsp_first/internal/lsp"
 )
 
 type Scanner struct {
-	Tokens   []Token
-	Erros    []lsp.Diagnostic
-	Source   []byte
-	Start    int
-	Current  int
-	Line     int
-	Length   int
-	Char     int
-	keyWords map[string]TokenType
-}
-
-func newDiagnostic(range_ lsp.Range, severity int, source string, message string) lsp.Diagnostic {
-	return lsp.Diagnostic{
-		Range:    range_,
-		Severity: severity,
-		Source:   source,
-		Message:  message,
-	}
+	Tokens    []Token
+	Erros     []lsp.Diagnostic
+	Source    []byte
+	Start     int
+	Current   int
+	Line      int
+	Length    int
+	StartChar int
+	EndChar   int
+	keyWords  map[string]TokenType
 }
 
 func NewScanner(source []byte) Scanner {
 	return Scanner{
-		Source:  source,
-		Erros:   []lsp.Diagnostic{},
-		Tokens:  []Token{},
-		Start:   0,
-		Current: 0,
-		Line:    1,
-		Char:    0,
-		Length:  len(source),
+		Source:    source,
+		Erros:     []lsp.Diagnostic{},
+		Tokens:    []Token{},
+		Start:     0,
+		Current:   0,
+		StartChar: 0,
+		EndChar:   0,
+		Line:      1,
+		Length:    len(source),
 		keyWords: map[string]TokenType{
 			"and":    AND,
 			"class":  CLASS,
@@ -59,52 +53,17 @@ func NewScanner(source []byte) Scanner {
 	}
 }
 
-func (scanner *Scanner) Scan() {
+func (scanner *Scanner) Scan(logger *log.Logger) {
 	for !scanner.isAtEnd() {
+		logger.Printf("current:%d\n", scanner.Current)
 		scanner.Start = scanner.Current
-		if err := scanner.scanToken(); err != nil {
-			if len(scanner.Tokens) > 0 {
-				diagnostic := newDiagnostic(
-					lsp.Range{
-						Start: lsp.Position{
-							Line:      scanner.Line,
-							Character: scanner.Char,
-						},
-						End: lsp.Position{
-							Line:      scanner.Line,
-							Character: scanner.Char,
-						},
-					},
-					1,
-					scanner.Tokens[0].Lexeme,
-					err.Error(),
-				)
-				scanner.Erros = append(scanner.Erros, diagnostic)
-			} else {
-				diagnostic := newDiagnostic(
-					lsp.Range{
-						Start: lsp.Position{
-							Line:      scanner.Line,
-							Character: scanner.Char,
-						},
-						End: lsp.Position{
-							Line:      scanner.Line,
-							Character: scanner.Char,
-						},
-					},
-					1,
-					"",
-					err.Error(),
-				)
-				scanner.Erros = append(scanner.Erros, diagnostic)
-			}
-		}
+		scanner.scanToken()
 	}
 
 	scanner.addToken(EOF, nil)
 }
 
-func (scanner *Scanner) scanToken() error {
+func (scanner *Scanner) scanToken() {
 	c := scanner.advance()
 	switch c {
 	case '(':
@@ -148,7 +107,9 @@ func (scanner *Scanner) scanToken() error {
 				for !scanner.match('\n') {
 					scanner.advance()
 				}
-
+				scanner.Line++
+				scanner.StartChar = 0
+				scanner.EndChar = 0
 				break
 			}
 			scanner.addToken(SLASH, nil)
@@ -178,7 +139,8 @@ func (scanner *Scanner) scanToken() error {
 	case '\n':
 		{
 			scanner.Line++
-			scanner.Char = 0
+			scanner.StartChar = 0
+			scanner.EndChar = 0
 			break
 		}
 
@@ -221,30 +183,32 @@ func (scanner *Scanner) scanToken() error {
 
 	case '"':
 		{
-			return scanner.string()
+			scanner.string()
+			break
 		}
 
 	default:
 		{
 			if scanner.isDigit(c) {
-				return scanner.number()
+				scanner.number()
+				break
 			}
 			if scanner.isAlpha(c) {
 				scanner.identifier()
 				break
 			}
 
-			return fmt.Errorf("Unexpected token %s", c)
+			scanner.addDaiagnostic(fmt.Sprintf("Unexpected token %s", c))
 		}
 	}
 
-	return nil
+	scanner.StartChar = scanner.EndChar
 }
 
 func (scanner *Scanner) advance() byte {
 	ret := scanner.Source[scanner.Current]
 	scanner.Current++
-	scanner.Char++
+	scanner.EndChar++
 
 	return ret
 }
@@ -271,7 +235,7 @@ func (scanner *Scanner) match(c byte) bool {
 	}
 
 	scanner.Current++
-	scanner.Char++
+	scanner.EndChar++
 	return true
 }
 
@@ -289,17 +253,19 @@ func (scanner *Scanner) identifier() {
 	scanner.addToken(identifier, nil)
 }
 
-func (scanner *Scanner) string() error {
+func (scanner *Scanner) string() {
 	for !scanner.isAtEnd() && scanner.peek() != '"' {
 		if scanner.peek() == '\n' {
 			scanner.Line++
-			scanner.Char = 0
+			scanner.StartChar = 0
+			scanner.EndChar = 0
 		}
 		scanner.advance()
 	}
 
 	if scanner.isAtEnd() {
-		return fmt.Errorf("Unterminated string")
+		scanner.addDaiagnostic("Unterminated string")
+		return
 	}
 
 	scanner.advance()
@@ -307,10 +273,10 @@ func (scanner *Scanner) string() error {
 	text := string(scanner.Source[scanner.Start+1 : scanner.Current-1])
 	scanner.addToken(STRING, text)
 
-	return nil
+	return
 }
 
-func (scanner *Scanner) number() error {
+func (scanner *Scanner) number() {
 	for scanner.isDigit(scanner.peek()) {
 		scanner.advance()
 	}
@@ -325,11 +291,12 @@ func (scanner *Scanner) number() error {
 
 	number, err := strconv.ParseFloat(string(scanner.Source[scanner.Start:scanner.Current]), 64)
 	if err != nil {
-		return err
+		scanner.addDaiagnostic("not valid number represntaion")
+		return
 	}
 
 	scanner.addToken(NUMBER, number)
-	return nil
+	return
 }
 
 func (scanner *Scanner) isDigit(c byte) bool {
@@ -355,4 +322,43 @@ func (scanner *Scanner) addToken(tokenType TokenType, literal any) {
 		Literal: literal,
 		Line:    scanner.Line,
 	})
+}
+
+func (scanner *Scanner) addDaiagnostic(msg string) {
+	if len(scanner.Tokens) > 0 {
+		diagnostic := lsp.NewDiagnostic(
+			lsp.Range{
+				Start: lsp.Position{
+					Line:      scanner.Line,
+					Character: scanner.StartChar,
+				},
+				End: lsp.Position{
+					Line:      scanner.Line,
+					Character: scanner.EndChar,
+				},
+			},
+			1,
+			scanner.Tokens[0].Lexeme,
+			msg,
+		)
+		scanner.Erros = append(scanner.Erros, diagnostic)
+	} else {
+		diagnostic := lsp.NewDiagnostic(
+			lsp.Range{
+				Start: lsp.Position{
+					Line:      scanner.Line,
+					Character: scanner.StartChar,
+				},
+				End: lsp.Position{
+					Line:      scanner.Line,
+					Character: scanner.EndChar,
+				},
+			},
+			1,
+			"",
+			msg,
+		)
+		scanner.Erros = append(scanner.Erros, diagnostic)
+
+	}
 }
