@@ -2,7 +2,6 @@ package analysis
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 
 	"github.com/neet-007/lox_lsp_first/internal/lsp"
@@ -53,9 +52,8 @@ func NewScanner(source []byte) Scanner {
 	}
 }
 
-func (scanner *Scanner) Scan(logger *log.Logger) {
+func (scanner *Scanner) Scan() {
 	for !scanner.isAtEnd() {
-		logger.Printf("current:%d\n", scanner.Current)
 		scanner.Start = scanner.Current
 		scanner.scanToken()
 	}

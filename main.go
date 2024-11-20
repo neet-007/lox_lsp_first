@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"io"
 	"log"
@@ -15,22 +14,30 @@ import (
 func main() {
 	logger := getLogger("/home/moayed/personal/lox_lsp_first/logs.txt")
 	logger.Println("Starting...")
-
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Split(rpc.Split)
-
-	writer := os.Stdout
-
-	for scanner.Scan() {
-		msg := scanner.Bytes()
-		method, content, err := rpc.DecodeMessage(msg)
-		if err != nil {
-			logger.Printf("Error:%v", err)
-		}
-
-		handleMessage(logger, writer, "", method, content)
-
+	file, err := os.ReadFile("./test.lox")
+	if err != nil {
+		panic(err)
 	}
+
+	_, _ = analysis.Analyse(file, logger)
+	/*
+
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Split(rpc.Split)
+
+		writer := os.Stdout
+
+		for scanner.Scan() {
+			msg := scanner.Bytes()
+			method, content, err := rpc.DecodeMessage(msg)
+			if err != nil {
+				logger.Printf("Error:%v", err)
+			}
+
+			handleMessage(logger, writer, "", method, content)
+
+		}
+	*/
 }
 
 func handleMessage(logger *log.Logger, writer io.Writer, state string, method string, content []byte) {
