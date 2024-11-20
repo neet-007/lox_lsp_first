@@ -7,9 +7,10 @@ import (
 )
 
 type Parser struct {
-	Tokens      []Token
-	Current     int
-	Diagnostics []lsp.Diagnostic
+	analyser    *Analyser
+	tokens      []Token
+	current     int
+	diagnostics []lsp.Diagnostic
 }
 
 type ParseError struct {
@@ -21,11 +22,12 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("Code %d: %s", e.Code, e.Message)
 }
 
-func NewParser(tokens []Token) Parser {
+func NewParser(tokens []Token, analyser *Analyser) Parser {
 	return Parser{
-		Tokens:      tokens,
-		Current:     0,
-		Diagnostics: []lsp.Diagnostic{},
+		analyser:    analyser,
+		tokens:      tokens,
+		current:     0,
+		diagnostics: []lsp.Diagnostic{},
 	}
 }
 
@@ -244,7 +246,7 @@ func (parser *Parser) block() ([]Stmt, error) {
 	for !parser.check(RIGHT_BRACE) && !parser.isAtEnd() {
 		stmt, err := parser.statement()
 		if err != nil {
-			return []Stmt{}, nil
+			return []Stmt{}, err
 		}
 
 		stmts = append(stmts, stmt)
@@ -252,7 +254,7 @@ func (parser *Parser) block() ([]Stmt, error) {
 
 	_, err := parser.consume(RIGHT_BRACE, "Expect '}' after block")
 	if err != nil {
-		return []Stmt{}, nil
+		return []Stmt{}, err
 	}
 
 	return stmts, nil
@@ -681,7 +683,7 @@ func (parser *Parser) primary() (Expr, error) {
 }
 
 func (parser *Parser) isAtEnd() bool {
-	return parser.Current >= len(parser.Tokens)
+	return parser.current >= len(parser.tokens)
 }
 
 func (parser *Parser) check(tokenType TokenType) bool {
@@ -694,12 +696,12 @@ func (parser *Parser) check(tokenType TokenType) bool {
 }
 
 func (parser *Parser) previous() *Token {
-	return &parser.Tokens[parser.Current-1]
+	return &parser.tokens[parser.current-1]
 }
 
 func (parser *Parser) advance() *Token {
 	if !parser.isAtEnd() {
-		parser.Current++
+		parser.current++
 	}
 
 	return parser.previous()
@@ -716,7 +718,8 @@ func (parser *Parser) consume(tokenType TokenType, msg string) (*Token, error) {
 }
 
 func (parser *Parser) error(token Token, msg string) error {
-	// !TODO report to lox
+	fmt.Println("parsing error")
+	parser.analyser.Error(token, msg)
 	return &ParseError{
 		Code:    1,
 		Message: msg,
@@ -735,7 +738,7 @@ func (parser *Parser) match(tokenTypes ...TokenType) bool {
 }
 
 func (parser *Parser) peek() *Token {
-	return &parser.Tokens[parser.Current]
+	return &parser.tokens[parser.current]
 }
 
 func (parser *Parser) synchronize() {

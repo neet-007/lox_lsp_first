@@ -95,21 +95,30 @@ var TokenNames = map[TokenType]string{
 }
 
 type Token struct {
-	Type    TokenType
-	Lexeme  string
-	Literal any
-	Line    int
+	Type      TokenType
+	Uri       string
+	Lexeme    string
+	Literal   any
+	StartLine int
+	EndLine   int
+	StartChar int
+	EndChar   int
 }
 
-func NewToken(tokenType TokenType, lexeme string, literal any, line int) Token {
+func NewToken(tokenType TokenType, lexeme string, literal any, startLine int,
+	endLine int, startChar int, endChar int, uri string) Token {
 	return Token{
-		Type:    tokenType,
-		Lexeme:  lexeme,
-		Literal: literal,
-		Line:    line,
+		Type:      tokenType,
+		Lexeme:    lexeme,
+		Literal:   literal,
+		StartLine: startLine,
+		EndLine:   endLine,
+		StartChar: startChar,
+		EndChar:   endChar,
+		Uri:       uri,
 	}
 }
 
 func (token *Token) String() string {
-	return fmt.Sprintf("type:%s, lexeme:%s, literal:%v, line:%d", TokenNames[token.Type], token.Lexeme, token.Literal, token.Line)
+	return fmt.Sprintf("type:%s, lexeme:%s, literal:%v, line:%d", TokenNames[token.Type], token.Lexeme, token.Literal, token.StartLine)
 }

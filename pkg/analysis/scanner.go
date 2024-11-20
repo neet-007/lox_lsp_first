@@ -3,34 +3,32 @@ package analysis
 import (
 	"fmt"
 	"strconv"
-
-	"github.com/neet-007/lox_lsp_first/internal/lsp"
 )
 
 type Scanner struct {
-	Tokens    []Token
-	Erros     []lsp.Diagnostic
-	Source    []byte
-	Start     int
-	Current   int
-	Line      int
-	Length    int
-	StartChar int
-	EndChar   int
+	analyser  *Analyser
+	tokens    []Token
+	source    []byte
+	start     int
+	current   int
+	line      int
+	length    int
+	startChar int
+	endChar   int
 	keyWords  map[string]TokenType
 }
 
-func NewScanner(source []byte) Scanner {
+func NewScanner(source []byte, analyser *Analyser) Scanner {
 	return Scanner{
-		Source:    source,
-		Erros:     []lsp.Diagnostic{},
-		Tokens:    []Token{},
-		Start:     0,
-		Current:   0,
-		StartChar: 0,
-		EndChar:   0,
-		Line:      1,
-		Length:    len(source),
+		analyser:  analyser,
+		source:    source,
+		tokens:    []Token{},
+		start:     0,
+		current:   0,
+		startChar: 0,
+		endChar:   0,
+		line:      1,
+		length:    len(source),
 		keyWords: map[string]TokenType{
 			"and":    AND,
 			"class":  CLASS,
@@ -52,13 +50,15 @@ func NewScanner(source []byte) Scanner {
 	}
 }
 
-func (scanner *Scanner) Scan() {
+func (scanner *Scanner) Scan() []Token {
 	for !scanner.isAtEnd() {
-		scanner.Start = scanner.Current
+		scanner.start = scanner.current
+		scanner.startChar = scanner.endChar
 		scanner.scanToken()
 	}
 
 	scanner.addToken(EOF, nil)
+	return scanner.tokens
 }
 
 func (scanner *Scanner) scanToken() {
@@ -105,9 +105,9 @@ func (scanner *Scanner) scanToken() {
 				for !scanner.match('\n') {
 					scanner.advance()
 				}
-				scanner.Line++
-				scanner.StartChar = 0
-				scanner.EndChar = 0
+				scanner.line++
+				scanner.startChar = 0
+				scanner.endChar = 0
 				break
 			}
 			scanner.addToken(SLASH, nil)
@@ -136,9 +136,9 @@ func (scanner *Scanner) scanToken() {
 		}
 	case '\n':
 		{
-			scanner.Line++
-			scanner.StartChar = 0
-			scanner.EndChar = 0
+			scanner.line++
+			scanner.startChar = 0
+			scanner.endChar = 0
 			break
 		}
 
@@ -196,17 +196,22 @@ func (scanner *Scanner) scanToken() {
 				break
 			}
 
-			scanner.addDaiagnostic(fmt.Sprintf("Unexpected token %s", c))
+			scanner.analyser.Error(Token{
+				StartLine: scanner.line,
+				EndLine:   scanner.line,
+				StartChar: scanner.startChar,
+				EndChar:   scanner.endChar,
+				Lexeme:    "@",
+			}, fmt.Sprintf("Unexpected token %s", c))
 		}
 	}
 
-	scanner.StartChar = scanner.EndChar
 }
 
 func (scanner *Scanner) advance() byte {
-	ret := scanner.Source[scanner.Current]
-	scanner.Current++
-	scanner.EndChar++
+	ret := scanner.source[scanner.current]
+	scanner.current++
+	scanner.endChar++
 
 	return ret
 }
@@ -216,15 +221,15 @@ func (scanner *Scanner) peek() byte {
 		return 0
 	}
 
-	return scanner.Source[scanner.Current]
+	return scanner.source[scanner.current]
 }
 
 func (scanner *Scanner) peekAhead() byte {
-	if scanner.Current+1 >= scanner.Length {
+	if scanner.current+1 >= scanner.length {
 		return 0
 	}
 
-	return scanner.Source[scanner.Current+1]
+	return scanner.source[scanner.current+1]
 }
 
 func (scanner *Scanner) match(c byte) bool {
@@ -232,8 +237,8 @@ func (scanner *Scanner) match(c byte) bool {
 		return false
 	}
 
-	scanner.Current++
-	scanner.EndChar++
+	scanner.current++
+	scanner.endChar++
 	return true
 }
 
@@ -242,7 +247,7 @@ func (scanner *Scanner) identifier() {
 		scanner.advance()
 	}
 
-	text := string(scanner.Source[scanner.Start:scanner.Current])
+	text := string(scanner.source[scanner.start:scanner.current])
 	identifier, ok := scanner.keyWords[text]
 	if !ok {
 		identifier = IDENTIFIER
@@ -254,21 +259,27 @@ func (scanner *Scanner) identifier() {
 func (scanner *Scanner) string() {
 	for !scanner.isAtEnd() && scanner.peek() != '"' {
 		if scanner.peek() == '\n' {
-			scanner.Line++
-			scanner.StartChar = 0
-			scanner.EndChar = 0
+			scanner.line++
+			scanner.startChar = 0
+			scanner.endChar = 0
 		}
 		scanner.advance()
 	}
 
 	if scanner.isAtEnd() {
-		scanner.addDaiagnostic("Unterminated string")
+		scanner.analyser.Error(Token{
+			StartLine: scanner.line,
+			EndLine:   scanner.line,
+			StartChar: scanner.startChar,
+			EndChar:   scanner.endChar,
+			Lexeme:    "@",
+		}, "Unterminated string")
 		return
 	}
 
 	scanner.advance()
 
-	text := string(scanner.Source[scanner.Start+1 : scanner.Current-1])
+	text := string(scanner.source[scanner.start+1 : scanner.current-1])
 	scanner.addToken(STRING, text)
 
 	return
@@ -287,9 +298,15 @@ func (scanner *Scanner) number() {
 		}
 	}
 
-	number, err := strconv.ParseFloat(string(scanner.Source[scanner.Start:scanner.Current]), 64)
+	number, err := strconv.ParseFloat(string(scanner.source[scanner.start:scanner.current]), 64)
 	if err != nil {
-		scanner.addDaiagnostic("not valid number represntaion")
+		scanner.analyser.Error(Token{
+			StartLine: scanner.line,
+			EndLine:   scanner.line,
+			StartChar: scanner.startChar,
+			EndChar:   scanner.endChar,
+			Lexeme:    "@",
+		}, "not valid number represntaion")
 		return
 	}
 
@@ -310,53 +327,16 @@ func (scanner *Scanner) isAlphaNumircal() bool {
 }
 
 func (scanner *Scanner) isAtEnd() bool {
-	return scanner.Current >= scanner.Length
+	return scanner.current >= scanner.length
 }
 
 func (scanner *Scanner) addToken(tokenType TokenType, literal any) {
-	scanner.Tokens = append(scanner.Tokens, Token{
-		Type:    tokenType,
-		Lexeme:  string(scanner.Source[scanner.Start:scanner.Current]),
-		Literal: literal,
-		Line:    scanner.Line,
+	scanner.tokens = append(scanner.tokens, Token{
+		Type:      tokenType,
+		Lexeme:    string(scanner.source[scanner.start:scanner.current]),
+		Literal:   literal,
+		StartLine: scanner.line,
+		StartChar: scanner.startChar,
+		EndChar:   scanner.endChar,
 	})
-}
-
-func (scanner *Scanner) addDaiagnostic(msg string) {
-	if len(scanner.Tokens) > 0 {
-		diagnostic := lsp.NewDiagnostic(
-			lsp.Range{
-				Start: lsp.Position{
-					Line:      scanner.Line,
-					Character: scanner.StartChar,
-				},
-				End: lsp.Position{
-					Line:      scanner.Line,
-					Character: scanner.EndChar,
-				},
-			},
-			1,
-			scanner.Tokens[0].Lexeme,
-			msg,
-		)
-		scanner.Erros = append(scanner.Erros, diagnostic)
-	} else {
-		diagnostic := lsp.NewDiagnostic(
-			lsp.Range{
-				Start: lsp.Position{
-					Line:      scanner.Line,
-					Character: scanner.StartChar,
-				},
-				End: lsp.Position{
-					Line:      scanner.Line,
-					Character: scanner.EndChar,
-				},
-			},
-			1,
-			"",
-			msg,
-		)
-		scanner.Erros = append(scanner.Erros, diagnostic)
-
-	}
 }

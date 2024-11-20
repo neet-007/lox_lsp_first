@@ -19,7 +19,8 @@ func main() {
 		panic(err)
 	}
 
-	_, _ = analysis.Analyse(file, logger)
+	analyser := analysis.NewAnaylser()
+	_, _ = analyser.Analyse(file, "uri", logger)
 	/*
 
 		scanner := bufio.NewScanner(os.Stdin)
@@ -68,15 +69,13 @@ func handleMessage(logger *log.Logger, writer io.Writer, state string, method st
 				return
 			}
 			logger.Printf("text document with uri:%s\n", didOpenTextDocumentNotification.Params.TextDocument.URI)
-			_, diagnostics := analysis.Analyse([]byte(didOpenTextDocumentNotification.Params.TextDocument.Text), logger)
 			writeResponse(writer, lsp.PublishDiagnosticsNotification{
 				Notification: lsp.Notification{
 					RPC:    "2.0",
 					Method: "textDocument/publishDiagnostics",
 				},
 				Params: lsp.PublishDiagnosticsParams{
-					URI:         didOpenTextDocumentNotification.Params.TextDocument.URI,
-					Diagnostics: diagnostics,
+					URI: didOpenTextDocumentNotification.Params.TextDocument.URI,
 				},
 			})
 		}
@@ -89,16 +88,14 @@ func handleMessage(logger *log.Logger, writer io.Writer, state string, method st
 			}
 
 			logger.Printf("Changed: %s", didChangeTextDocumentNotification.Params.TextDocument.URI)
-			for _, change := range didChangeTextDocumentNotification.Params.ContentChanges {
-				_, diagnostics := analysis.Analyse([]byte(change.Text), logger)
+			for _, _ = range didChangeTextDocumentNotification.Params.ContentChanges {
 				writeResponse(writer, lsp.PublishDiagnosticsNotification{
 					Notification: lsp.Notification{
 						RPC:    "2.0",
 						Method: "textDocument/publishDiagnostics",
 					},
 					Params: lsp.PublishDiagnosticsParams{
-						URI:         didChangeTextDocumentNotification.Params.TextDocument.URI,
-						Diagnostics: diagnostics,
+						URI: didChangeTextDocumentNotification.Params.TextDocument.URI,
 					},
 				})
 			}
