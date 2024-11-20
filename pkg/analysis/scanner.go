@@ -129,7 +129,7 @@ func (scanner *Scanner) scanToken() {
 			break
 		}
 	case ' ':
-	case 'r':
+	case '\r':
 	case '\t':
 		{
 			break
@@ -306,7 +306,7 @@ func (scanner *Scanner) isAlpha(c byte) bool {
 }
 
 func (scanner *Scanner) isAlphaNumircal() bool {
-	return scanner.isAlpha(scanner.Source[scanner.Current]) || scanner.isDigit(scanner.Source[scanner.Current])
+	return scanner.isAlpha(scanner.peek()) || scanner.isDigit(scanner.peek())
 }
 
 func (scanner *Scanner) isAtEnd() bool {
