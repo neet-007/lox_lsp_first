@@ -71,11 +71,12 @@ func (a *AstPrinter) VisitBlockStmt(stmt Block) any {
 }
 
 func (a *AstPrinter) VisitClassStmt(stmt Class) any {
+	superclass := stmt.Superclass
 	var methods []string
 	for _, method := range stmt.Methods {
 		methods = append(methods, a.print(method))
 	}
-	return fmt.Sprintf("(class %s %s)", stmt.Name.Lexeme, strings.Join(methods, " "))
+	return fmt.Sprintf("(class %s superclass [%s] %s)", stmt.Name.Lexeme, a.VisitVariableExpr(superclass), strings.Join(methods, " "))
 }
 
 func (a *AstPrinter) VisitFunctionStmt(stmt Function) any {

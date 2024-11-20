@@ -52,6 +52,29 @@ func (parser *Parser) declaration() Stmt {
 		return stmt
 	}
 
+	if parser.match(CLASS) {
+		stmt, err := parser.classDeclaration()
+		if err != nil {
+			if _, ok := err.(*ParseError); ok {
+				parser.synchronize()
+				return nil
+			}
+			panic(err)
+		}
+		return stmt
+	}
+	if parser.match(FUN) {
+		stmt, err := parser.function("function")
+		if err != nil {
+			if _, ok := err.(*ParseError); ok {
+				parser.synchronize()
+				return nil
+			}
+			panic(err)
+		}
+		return stmt
+	}
+
 	stmt, err := parser.statement()
 	if err != nil {
 		if _, ok := err.(*ParseError); ok {
@@ -61,6 +84,99 @@ func (parser *Parser) declaration() Stmt {
 		panic(err)
 	}
 	return stmt
+}
+
+func (parser *Parser) function(kind string) (Function, error) {
+	name, err := parser.consume(IDENTIFIER, fmt.Sprintf("Expect name for %s ", kind))
+	if err != nil {
+		return Function{}, err
+	}
+
+	_, err = parser.consume(LEFT_PAREN, fmt.Sprintf("Expect ( after name for %s ", kind))
+	if err != nil {
+		return Function{}, err
+	}
+
+	params := []Token{}
+	if !parser.check(RIGHT_PAREN) {
+		param, err := parser.consume(IDENTIFIER, fmt.Sprintf("Expect param for %s ", kind))
+		if err != nil {
+			return Function{}, err
+		}
+
+		params = append(params, *param)
+
+		for parser.match(COMMA) && !parser.isAtEnd() {
+			if len(params) >= 256 {
+				return Function{}, &ParseError{
+					Code:    1,
+					Message: "cant have params for than 256",
+				}
+			}
+			param, err = parser.consume(IDENTIFIER, fmt.Sprintf("Expect param for %s ", kind))
+			if err != nil {
+				return Function{}, err
+			}
+
+			params = append(params, *param)
+		}
+	}
+
+	_, err = parser.consume(RIGHT_PAREN, fmt.Sprintf("Expect ) after params for %s ", kind))
+	if err != nil {
+		return Function{}, err
+	}
+
+	_, err = parser.consume(LEFT_BRACE, fmt.Sprintf("Expect { before body for %s ", kind))
+	if err != nil {
+		return Function{}, err
+	}
+
+	body, err := parser.block()
+	if err != nil {
+		return Function{}, err
+	}
+
+	return NewFunction(*name, params, body), nil
+}
+
+func (parser *Parser) classDeclaration() (Stmt, error) {
+	name, err := parser.consume(IDENTIFIER, "Expect identifier after class")
+	if err != nil {
+		return nil, err
+	}
+
+	var superclass Variable
+	if parser.match(LESS) {
+		_, err = parser.consume(IDENTIFIER, "Expect superclass name after < ")
+		if err != nil {
+			return nil, err
+		}
+		superclass = NewVariable(*parser.previous())
+	}
+
+	_, err = parser.consume(LEFT_BRACE, "Expect { before class body")
+	if err != nil {
+		return nil, err
+	}
+
+	methods := []Function{}
+
+	for !parser.check(RIGHT_BRACE) && !parser.isAtEnd() {
+		method, err := parser.function("method")
+		if err != nil {
+			return nil, err
+		}
+
+		methods = append(methods, method)
+	}
+
+	_, err = parser.consume(RIGHT_BRACE, "Expect } after class body")
+	if err != nil {
+		return nil, err
+	}
+
+	return NewClass(*name, superclass, methods), nil
 }
 
 func (parser *Parser) varDeclaration() (Stmt, error) {
@@ -465,7 +581,66 @@ func (parser *Parser) unary() (Expr, error) {
 		return NewUnary(*operator, right), nil
 	}
 
-	return parser.primary()
+	return parser.call()
+}
+
+func (parser *Parser) call() (Expr, error) {
+	expr, err := parser.primary()
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		if parser.match(LEFT_PAREN) {
+			expr, err = parser.finishCall(expr)
+			if err != nil {
+				return nil, err
+			}
+		} else if parser.match(DOT) {
+			name, err := parser.consume(IDENTIFIER, "Expect proprety name after '.'")
+			if err != nil {
+				return nil, err
+			}
+			expr = NewGet(expr, *name)
+		} else {
+			break
+		}
+	}
+
+	return expr, nil
+}
+
+func (parser *Parser) finishCall(callee Expr) (Expr, error) {
+	args := []Expr{}
+
+	if !parser.check(RIGHT_PAREN) {
+		expr, err := parser.expression()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, expr)
+
+		for !parser.isAtEnd() && parser.match(COMMA) {
+			if len(args) >= 256 {
+				return nil, &ParseError{
+					Code:    1,
+					Message: "cant have more than 255 arguemnts ",
+				}
+			}
+			expr, err = parser.expression()
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, expr)
+		}
+	}
+
+	rightParen, err := parser.consume(RIGHT_PAREN, "Expect ')' after call")
+	if err != nil {
+		return nil, err
+	}
+
+	return NewCall(callee, *rightParen, args), nil
 }
 
 func (parser *Parser) primary() (Expr, error) {
