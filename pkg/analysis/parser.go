@@ -86,6 +86,30 @@ func (parser *Parser) varDeclaration() (Stmt, error) {
 }
 
 func (parser *Parser) statement() (Stmt, error) {
+	if parser.match(FOR) {
+		return parser.forStatement()
+	}
+	if parser.match(IF) {
+		return parser.ifStatement()
+	}
+	if parser.match(PRINT) {
+		return parser.printStatement()
+	}
+	if parser.match(RETURN) {
+		return parser.returnStatement()
+	}
+	if parser.match(WHILE) {
+		return parser.whileStatement()
+	}
+	if parser.match(LEFT_BRACE) {
+		stmts, err := parser.block()
+		if err != nil {
+			return nil, err
+		}
+
+		return NewBlock(stmts), nil
+	}
+
 	expr, err := parser.expression()
 	if err != nil {
 		return nil, err
@@ -94,6 +118,199 @@ func (parser *Parser) statement() (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return NewExpression(expr), nil
+}
+
+func (parser *Parser) block() ([]Stmt, error) {
+	stmts := []Stmt{}
+
+	for !parser.check(RIGHT_BRACE) && !parser.isAtEnd() {
+		stmt, err := parser.statement()
+		if err != nil {
+			return []Stmt{}, nil
+		}
+
+		stmts = append(stmts, stmt)
+	}
+
+	_, err := parser.consume(RIGHT_BRACE, "Expect '}' after block")
+	if err != nil {
+		return []Stmt{}, nil
+	}
+
+	return stmts, nil
+}
+
+func (parser *Parser) whileStatement() (Stmt, error) {
+	_, err := parser.consume(LEFT_PAREN, "Expect '(' before condition")
+	if err != nil {
+		return nil, err
+	}
+
+	condition, err := parser.expression()
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = parser.consume(RIGHT_PAREN, "Expect ')' after condition")
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := parser.statement()
+	if err != nil {
+		return nil, err
+	}
+
+	return NewWhile(condition, body), nil
+}
+
+func (parser *Parser) returnStatement() (Stmt, error) {
+	token := parser.previous()
+	var value Expr = nil
+	var err error
+	if !parser.check(SEMICOLON) {
+		value, err = parser.expression()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	_, err = parser.consume(SEMICOLON, "Expect ';' after expression.")
+	if err != nil {
+		return nil, err
+	}
+
+	return NewReturn(*token, value), nil
+}
+
+func (parser *Parser) printStatement() (Stmt, error) {
+	value, err := parser.expression()
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = parser.consume(SEMICOLON, "Expect ';' after statement")
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPrint(value), nil
+}
+
+func (parser *Parser) ifStatement() (Stmt, error) {
+	_, err := parser.consume(LEFT_PAREN, "Expect '(' before statement")
+	if err != nil {
+		return nil, err
+	}
+
+	condition, err := parser.expression()
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = parser.consume(RIGHT_PAREN, "Expect ')' before statement")
+	if err != nil {
+		return nil, err
+	}
+
+	thenBranch, err := parser.statement()
+	if err != nil {
+		return nil, err
+	}
+
+	var elseBranch Stmt = nil
+	if parser.match(ELSE) {
+		elseBranch, err = parser.statement()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	stmt := NewIf(condition, thenBranch, elseBranch)
+
+	return stmt, nil
+}
+
+func (parser *Parser) forStatement() (Stmt, error) {
+	_, err := parser.consume(LEFT_PAREN, "Expect '(' before initializer")
+	if err != nil {
+		return nil, err
+	}
+
+	var initializer Stmt
+	if parser.match(SEMICOLON) {
+		initializer = nil
+	} else if parser.match(VAR) {
+		initializer, err = parser.varDeclaration()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		initializer, err = parser.expressionStatement()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var condition Expr
+	if !parser.check(SEMICOLON) {
+		condition, err = parser.expression()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	_, err = parser.consume(SEMICOLON, "Expect ';' between for")
+	if err != nil {
+		return nil, err
+	}
+
+	var incerment Expr
+	if !parser.check(RIGHT_PAREN) {
+		incerment, err = parser.expression()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	_, err = parser.consume(RIGHT_PAREN, "Expect ')' between for")
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := parser.statement()
+	if err != nil {
+		return nil, err
+	}
+
+	if incerment != nil {
+		body = NewBlock(
+			[]Stmt{body, NewExpression(incerment)},
+		)
+	}
+
+	if condition == nil {
+		condition = NewLiteral(true)
+	}
+
+	body = NewWhile(condition, body)
+
+	if initializer != nil {
+		body = NewBlock([]Stmt{initializer, body})
+	}
+
+	return body, nil
+}
+
+func (parser *Parser) expressionStatement() (Stmt, error) {
+	expr, err := parser.expression()
+	if err != nil {
+		return nil, err
+	}
+
+	parser.consume(SEMICOLON, "Expect ';' after expression.")
 
 	return NewExpression(expr), nil
 }
@@ -109,7 +326,7 @@ func (parser *Parser) assignment() (Expr, error) {
 	}
 
 	if parser.match(EQUAL) {
-		_ = parser.previous()
+		equals := parser.previous()
 		value, err := parser.assignment()
 		if err != nil {
 			return nil, err
@@ -120,6 +337,8 @@ func (parser *Parser) assignment() (Expr, error) {
 			name := varExpr.Name
 			return NewAssign(name, value), nil
 		}
+
+		parser.error(*equals, "Invalid assignment target.")
 	}
 
 	return expr, nil
