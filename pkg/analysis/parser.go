@@ -243,11 +243,8 @@ func (parser *Parser) statement() (Stmt, error) {
 func (parser *Parser) block() ([]Stmt, error) {
 	stmts := []Stmt{}
 
-	for !parser.check(RIGHT_BRACE) && !parser.isAtEnd() {
-		stmt, err := parser.statement()
-		if err != nil {
-			return []Stmt{}, err
-		}
+	for !parser.isAtEnd() && !parser.check(RIGHT_BRACE) {
+		stmt := parser.declaration()
 
 		stmts = append(stmts, stmt)
 	}
@@ -683,7 +680,7 @@ func (parser *Parser) primary() (Expr, error) {
 }
 
 func (parser *Parser) isAtEnd() bool {
-	return parser.current >= len(parser.tokens)
+	return parser.peek().Type == EOF
 }
 
 func (parser *Parser) check(tokenType TokenType) bool {
