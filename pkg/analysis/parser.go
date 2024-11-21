@@ -453,6 +453,11 @@ func (parser *Parser) assignment() (Expr, error) {
 			return NewAssign(name, value), nil
 		}
 
+		getExpr, getOk := expr.(Get)
+		if getOk {
+			return NewSet(getExpr.Object, getExpr.Name, value), nil
+		}
+
 		parser.error(*equals, "Invalid assignment target.")
 	}
 
@@ -658,6 +663,24 @@ func (parser *Parser) primary() (Expr, error) {
 		return NewLiteral(prev.Literal), nil
 	}
 
+	if parser.match(SUPER) {
+		keyword := parser.previous()
+		_, err := parser.consume(DOT, "Expect '.' after 'super'.")
+		if err != nil {
+			return nil, err
+		}
+		method, err := parser.consume(IDENTIFIER,
+			"Expect superclass method name.")
+		if err != nil {
+			return nil, err
+		}
+		return NewSuper(*keyword, *method), nil
+	}
+
+	if parser.match(THIS) {
+		return NewThis(*parser.previous()), nil
+	}
+
 	if parser.match(IDENTIFIER) {
 		return NewVariable(*parser.previous()), nil
 	}
@@ -715,7 +738,7 @@ func (parser *Parser) consume(tokenType TokenType, msg string) (*Token, error) {
 }
 
 func (parser *Parser) error(token Token, msg string) error {
-	fmt.Println("parsing error")
+	fmt.Printf("parsing error %s %v %v\n", msg, token.Lexeme, TokenNames[token.Type])
 	parser.analyser.Error(token, msg)
 	return &ParseError{
 		Code:    1,

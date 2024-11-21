@@ -3,7 +3,6 @@ package analysis
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/neet-007/lox_lsp_first/internal/lsp"
 	"github.com/neet-007/lox_lsp_first/pkg/rpc"
@@ -27,14 +26,11 @@ func (analyser *Analyser) Analyse(source []byte, uri string, logger *log.Logger)
 
 	tokens := scanner.Scan()
 
-	fmt.Println("before parse")
 	parser := NewParser(tokens, analyser)
 
 	astPrinter := NewAstPrinter()
 
 	statements := parser.Parse()
-
-	fmt.Println("after parse")
 
 	for _, stmt := range statements {
 		if stmt == nil {
@@ -44,6 +40,24 @@ func (analyser *Analyser) Analyse(source []byte, uri string, logger *log.Logger)
 		logger.Printf("%s\n", astPrinter.print(stmt))
 	}
 
+	resolver := NewResolver(analyser)
+
+	fmt.Println("before resolve")
+	resolver.Resolve(statements)
+	fmt.Println("after resolve")
+
+	for k, v := range resolver.locals {
+		logger.Println("{")
+		logger.Printf("  expr:%v\n", k)
+		logger.Printf("  dist:%d\n", v)
+		logger.Println("}")
+	}
+	for k, v := range resolver.scopes {
+		logger.Println("{")
+		logger.Printf("  scope:%d\n", k)
+		logger.Printf("  bool:%v\n", v)
+		logger.Println("}")
+	}
 	if analyser.hadError {
 		return []Token{}, []lsp.Diagnostic{}
 	}
@@ -74,7 +88,7 @@ func (analyser *Analyser) Error(token Token, message string) {
 		message,
 	)
 
-	reply := rpc.EncodeMessage(lsp.PublishDiagnosticsNotification{
+	_ = rpc.EncodeMessage(lsp.PublishDiagnosticsNotification{
 		Notification: lsp.Notification{
 			RPC:    "2.0",
 			Method: "textDocument/publishDiagnostics",
@@ -85,7 +99,9 @@ func (analyser *Analyser) Error(token Token, message string) {
 		},
 	})
 
-	if _, err := os.Stdout.Write([]byte(reply)); err != nil {
+	/*
+		if _, err := os.Stdout.Write([]byte(reply)); err != nil {
 
-	}
+		}
+	*/
 }

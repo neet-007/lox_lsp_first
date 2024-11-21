@@ -125,6 +125,10 @@ func (a *AstPrinter) VisitExpressionStmt(stmt Expression) any {
 }
 
 func (a *AstPrinter) print(stmt Stmt) string {
+	if stmt == nil {
+		return "nil"
+	}
+
 	val := stmt.Accept(a)
 	if val == nil {
 		return "nil"

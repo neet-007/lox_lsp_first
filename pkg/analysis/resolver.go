@@ -65,13 +65,6 @@ func (resolver *Resolver) VisitThisExpr(expr This) any {
 	return nil
 }
 
-func (resolver *Resolver) resolveFunctionStmt(function Function, kind FunctionType) {
-	resolver.declare(function.Name)
-	resolver.define(function.Name)
-
-	resolver.resolveFunction(function, FUNCTION)
-}
-
 func (resolver *Resolver) resolveFunction(stmt Function, kind FunctionType) {
 	enclosing := resolver.currentFunction
 	resolver.currentFunction = kind
@@ -118,11 +111,15 @@ func (resolver *Resolver) VisitCallExpr(expr Call) any {
 }
 
 func (resolver *Resolver) resolveStmt(stmt Stmt) {
-	stmt.Accept(resolver)
+	if stmt != nil {
+		stmt.Accept(resolver)
+	}
 }
 
 func (resolver *Resolver) resolveExpr(expr Expr) {
-	expr.Accept(resolver)
+	if expr != nil {
+		expr.Accept(resolver)
+	}
 }
 
 func (resolver *Resolver) resolveLocal(expr Expr, token Token) {
@@ -267,7 +264,10 @@ func (resolver *Resolver) VisitExpressionStmt(stmt Expression) any {
 	return nil
 }
 func (resolver *Resolver) VisitFunctionStmt(stmt Function) any {
+	resolver.declare(stmt.Name)
+	resolver.define(stmt.Name)
 
+	resolver.resolveFunction(stmt, FUNCTION)
 	return nil
 }
 func (resolver *Resolver) VisitIfStmt(stmt If) any {
