@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"io"
 	"log"
@@ -14,34 +15,27 @@ import (
 func main() {
 	logger := getLogger("/home/moayed/personal/lox_lsp_first/logs.txt")
 	logger.Println("Starting...")
-	file, err := os.ReadFile("./test.lox")
-	if err != nil {
-		panic(err)
-	}
 
 	analyser := analysis.NewAnaylser()
-	_, _ = analyser.Analyse(file, "uri", logger)
-	/*
 
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Split(rpc.Split)
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Split(rpc.Split)
 
-		writer := os.Stdout
+	writer := os.Stdout
 
-		for scanner.Scan() {
-			msg := scanner.Bytes()
-			method, content, err := rpc.DecodeMessage(msg)
-			if err != nil {
-				logger.Printf("Error:%v", err)
-			}
-
-			handleMessage(logger, writer, "", method, content)
-
+	for scanner.Scan() {
+		msg := scanner.Bytes()
+		method, content, err := rpc.DecodeMessage(msg)
+		if err != nil {
+			logger.Printf("Error:%v", err)
 		}
-	*/
+
+		handleMessage(logger, writer, analyser, method, content)
+
+	}
 }
 
-func handleMessage(logger *log.Logger, writer io.Writer, state string, method string, content []byte) {
+func handleMessage(logger *log.Logger, writer io.Writer, analyser *analysis.Analyser, method string, content []byte) {
 	logger.Printf("Message with method:%s\n", method)
 	switch method {
 	case "initialize":
@@ -69,15 +63,20 @@ func handleMessage(logger *log.Logger, writer io.Writer, state string, method st
 				return
 			}
 			logger.Printf("text document with uri:%s\n", didOpenTextDocumentNotification.Params.TextDocument.URI)
-			writeResponse(writer, lsp.PublishDiagnosticsNotification{
-				Notification: lsp.Notification{
-					RPC:    "2.0",
-					Method: "textDocument/publishDiagnostics",
-				},
-				Params: lsp.PublishDiagnosticsParams{
-					URI: didOpenTextDocumentNotification.Params.TextDocument.URI,
-				},
-			})
+			analyser.Analyse([]byte(didOpenTextDocumentNotification.Params.TextDocument.Text),
+				didOpenTextDocumentNotification.Params.TextDocument.URI,
+				logger)
+			/*
+				writeResponse(writer, lsp.PublishDiagnosticsNotification{
+					Notification: lsp.Notification{
+						RPC:    "2.0",
+						Method: "textDocument/publishDiagnostics",
+					},
+					Params: lsp.PublishDiagnosticsParams{
+						URI: didOpenTextDocumentNotification.Params.TextDocument.URI,
+					},
+				})
+			*/
 		}
 	case "textDocument/didChange":
 		{
@@ -88,7 +87,15 @@ func handleMessage(logger *log.Logger, writer io.Writer, state string, method st
 			}
 
 			logger.Printf("Changed: %s", didChangeTextDocumentNotification.Params.TextDocument.URI)
-			for _, _ = range didChangeTextDocumentNotification.Params.ContentChanges {
+			combinedText := ""
+			for _, change := range didChangeTextDocumentNotification.Params.ContentChanges {
+				combinedText += change.Text
+			}
+
+			analyser.Analyse(([]byte(combinedText)),
+				didChangeTextDocumentNotification.Params.TextDocument.URI,
+				logger)
+			/*
 				writeResponse(writer, lsp.PublishDiagnosticsNotification{
 					Notification: lsp.Notification{
 						RPC:    "2.0",
@@ -98,7 +105,7 @@ func handleMessage(logger *log.Logger, writer io.Writer, state string, method st
 						URI: didChangeTextDocumentNotification.Params.TextDocument.URI,
 					},
 				})
-			}
+			*/
 		}
 	}
 

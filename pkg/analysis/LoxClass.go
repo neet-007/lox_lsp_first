@@ -36,5 +36,12 @@ func (class *LoxClass) Arity() int {
 }
 
 func (class *LoxClass) Call(args ...any) any {
-	return nil
+	instance := NewInstance(class)
+
+	initializer := class.findMethod("init")
+	if initializer != nil {
+		initializer.Bind(instance).Call(args...)
+	}
+
+	return instance
 }

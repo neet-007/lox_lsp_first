@@ -8,6 +8,7 @@ type Environment struct {
 func NewEnvironment(environment *Environment) *Environment {
 	return &Environment{
 		enclosing: environment,
+		values:    map[string]any{},
 	}
 }
 
@@ -20,7 +21,7 @@ func (env *Environment) Get(token Token) (any, error) {
 		return env.enclosing.Get(token)
 	}
 
-	return nil, nil
+	return nil, &RunTimeError{Code: 1, Message: "cannot get undefined value"}
 }
 
 func (env *Environment) Assige(token Token, val any) error {
@@ -32,7 +33,7 @@ func (env *Environment) Assige(token Token, val any) error {
 		return env.Assige(token, val)
 	}
 
-	return nil
+	return &RunTimeError{Code: 1, Message: "cannot assigne to undefined value"}
 }
 
 func (env *Environment) Define(name string, val any) {
